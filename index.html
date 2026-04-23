@@ -45,6 +45,11 @@ button{
 
 .correct{color:green;}
 .incorrect{color:red;}
+
+.warning{
+  color:red;
+  margin:10px 0;
+}
 </style>
 </head>
 
@@ -54,10 +59,10 @@ button{
 <script>
 
 // ==========================
-// DETECT MODE
+// MODE DETECTION
 // ==========================
-const urlParams = new URLSearchParams(window.location.search);
-const dataParam = urlParams.get("data");
+const params = new URLSearchParams(window.location.search);
+const dataParam = params.get("data");
 
 if(dataParam){
   loadStudentMode(JSON.parse(atob(dataParam)));
@@ -66,7 +71,7 @@ if(dataParam){
 }
 
 // ==========================
-// BUILDER MODE
+// BUILDER
 // ==========================
 function loadBuilder(){
 
@@ -75,8 +80,8 @@ function loadBuilder(){
   app.innerHTML = `
     <h2>🎧 Lesson Builder</h2>
 
-    <label>Video URL</label>
-    <input id="videoUrl" placeholder="video.mp4 or full URL">
+    <label>Video URL (MP4 or YouTube)</label>
+    <input id="videoUrl" placeholder="Paste MP4 or YouTube link">
 
     <h3>Sections</h3>
     <div id="sections"></div>
@@ -117,7 +122,10 @@ function addSection(){
 
 function generate(){
 
-  const videoUrl = document.getElementById("videoUrl").value;
+  let videoUrl = document.getElementById("videoUrl").value.trim();
+
+  // force https
+  videoUrl = videoUrl.replace("http://","https://");
 
   const sections = [];
 
@@ -131,14 +139,52 @@ function generate(){
   });
 
   const lesson = {videoUrl, sections};
-
   const encoded = btoa(JSON.stringify(lesson));
-
   const link = `${location.origin}${location.pathname}?data=${encoded}`;
 
   document.getElementById("linkOutput").innerHTML =
-    `<a href="${link}" target="_blank">👉 Open Lesson</a><br><br>
-     Copy link:<br>${link}`;
+    `<a href="${link}" target="_blank">👉 Open Lesson</a><br><br>${link}`;
+}
+
+// ==========================
+// VIDEO HANDLING
+// ==========================
+function getVideoEmbed(url){
+
+  if(!url) return "<p class='warning'>No video URL provided</p>";
+
+  url = url.replace("http://","https://");
+
+  // YouTube
+  if(url.includes("youtube.com") || url.includes("youtu.be")){
+    const id = extractYouTubeID(url);
+
+    if(!id){
+      return "<p class='warning'>Invalid YouTube link</p>";
+    }
+
+    return `
+      <iframe
+        width="100%" height="400"
+        src="https://www.youtube.com/embed/${id}"
+        frameborder="0"
+        allowfullscreen>
+      </iframe>
+    `;
+  }
+
+  // MP4
+  return `
+    <video id="video" controls width="100%">
+      <source src="${url}" type="video/mp4">
+    </video>
+  `;
+}
+
+function extractYouTubeID(url){
+  const regExp = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/;
+  const match = url.match(regExp);
+  return match ? match[1] : null;
 }
 
 // ==========================
@@ -151,19 +197,24 @@ function loadStudentMode(data){
   let inputIndex = 1;
   let allAnswers = [];
 
+  const videoHTML = getVideoEmbed(data.videoUrl);
+
   app.innerHTML = `
     <h2>🎧 Listening Practice</h2>
-    <video id="video" controls width="100%" src="${data.videoUrl}"></video>
+    ${videoHTML}
+    <div id="videoWarning" class="warning"></div>
     <div id="sections"></div>
+
     <button onclick="checkAnswers()">Check Answers</button>
     <button id="revealBtn" onclick="revealAnswers()" disabled>Reveal Answers</button>
+
     <p id="result"></p>
   `;
 
   const video = document.getElementById("video");
   const sectionsDiv = document.getElementById("sections");
 
-  data.sections.forEach((sec,i)=>{
+  data.sections.forEach((sec)=>{
 
     const div = document.createElement("div");
     div.className = "section";
@@ -186,7 +237,10 @@ function loadStudentMode(data){
     sectionsDiv.appendChild(div);
   });
 
+  // MP4 section playback only
   window.playSection = function(start,end){
+    if(!video) return; // disable for YouTube
+
     video.currentTime = start;
     video.play();
 
@@ -229,6 +283,16 @@ function loadStudentMode(data){
 
     document.getElementById("result").innerText += " | Answers revealed";
   };
+
+  // video error detection
+  setTimeout(()=>{
+    if(video){
+      video.onerror = () => {
+        document.getElementById("videoWarning").innerText =
+          "⚠️ Video failed to load. Use HTTPS .mp4 or valid YouTube link.";
+      };
+    }
+  },500);
 }
 
 </script>

@@ -29,11 +29,7 @@ button:disabled{opacity:0.5;}
 
 .section-active{outline:2px solid #4f46e5;}
 
-label{
-  font-weight:bold;
-  display:block;
-  margin-top:6px;
-}
+label{font-weight:bold;display:block;margin-top:6px;}
 
 textarea,input{
   width:100%;
@@ -57,7 +53,7 @@ textarea,input{
 input.gap-input{
   border:none;
   border-bottom:2px solid #333;
-  width:100px;
+  width:120px;
 }
 
 .correct{color:green;}
@@ -74,27 +70,41 @@ input.gap-input{
 
 <script>
 // ==========================
-// SAFE ENCODE
+// GLOBALS
+// ==========================
+const app = document.getElementById("app");
+
+let lessonData = null;
+let ytPlayer = null;
+let currentSection = 0;
+let stopTime = 0;
+
+let answersMap = {};
+let order = [];
+let checked = false;
+let ytLoaded = false;
+
+// ==========================
+// ENCODE / DECODE
 // ==========================
 function encodeData(obj){
   return encodeURIComponent(JSON.stringify(obj));
 }
-
 function decodeData(str){
   return JSON.parse(decodeURIComponent(str));
 }
 
 // ==========================
-// MODE
+// ROUTING
 // ==========================
-const params=new URLSearchParams(window.location.search);
-const raw=params.get("data");
+const params = new URLSearchParams(window.location.search);
+const raw = params.get("data");
 
 if(raw){
   try{
     loadStudent(decodeData(raw), false);
   }catch(e){
-    document.getElementById("app").innerHTML="<h2>Error loading lesson</h2>";
+    app.innerHTML = "<h2>Error loading lesson</h2>";
   }
 }else{
   loadBuilder();
@@ -105,26 +115,22 @@ if(raw){
 // ==========================
 function loadBuilder(saved=null){
 
-  app.innerHTML=`
+  app.innerHTML = `
     <h2>🎧 Lesson Builder</h2>
 
     <div class="instructions">
-      <strong>Instructions:</strong><br>
-      • Paste a YouTube or MP4 video link<br>
-      • Write text using <b>___</b> for gaps<br>
-      • Add answers in order, separated by commas<br>
-      • Set start and end times for each section
+      • Paste a YouTube or MP4 link<br>
+      • Use ___ for gaps<br>
+      • Answers are comma-separated per section
     </div>
 
-    <label>Video URL (YouTube supported)</label>
+    <label>Video URL</label>
     <input id="videoUrl">
 
     <h3>Sections</h3>
     <div id="sections"></div>
 
     <button onclick="addSection()">+ Add Section</button>
-
-    <br><br>
     <button onclick="preview()">👀 Preview</button>
     <button onclick="generate()">🔗 Generate Link</button>
 
@@ -132,105 +138,95 @@ function loadBuilder(saved=null){
   `;
 
   if(saved){
-    videoUrl.value=saved.videoUrl;
-    saved.sections.forEach(s=>addSection(s));
+    document.getElementById("videoUrl").value = saved.videoUrl;
+    saved.sections.forEach(s => addSection(s));
   }else{
     addSection();
   }
 }
 
 function addSection(data=null){
-  const div=document.createElement("div");
-  div.className="section-builder";
+  const div = document.createElement("div");
+  div.className = "section-builder";
 
-  div.innerHTML=`
+  div.innerHTML = `
     <h3>Section</h3>
 
     <label>Text (use ___ for gaps)</label>
-    <textarea class="text">${data?.text||""}</textarea>
+    <textarea class="text">${data?.text || ""}</textarea>
 
     <label>Answers (comma separated)</label>
-    <input class="answers" value="${data?.answers?.join(",")||""}">
+    <input class="answers" value="${data?.answers?.join(",") || ""}">
 
-    <label>Start Time (seconds)</label>
-    <input class="start" type="number" value="${data?.start||0}">
+    <label>Start Time</label>
+    <input class="start" type="number" value="${data?.start || 0}">
 
-    <label>End Time (seconds)</label>
-    <input class="end" type="number" value="${data?.end||0}">
+    <label>End Time</label>
+    <input class="end" type="number" value="${data?.end || 0}">
   `;
 
-  sections.appendChild(div);
+  document.getElementById("sections").appendChild(div);
 }
 
 function collect(){
-  const videoUrl=document.getElementById("videoUrl").value.trim();
+  const videoUrl = document.getElementById("videoUrl").value.trim();
 
-  const sectionsData=[];
-  document.querySelectorAll(".section-builder").forEach(s=>{
-    sectionsData.push({
-      text:s.querySelector(".text").value,
-      answers:s.querySelector(".answers").value.split(",").map(a=>a.trim()),
-      start:+s.querySelector(".start").value,
-      end:+s.querySelector(".end").value
-    });
-  });
+  const sections = [...document.querySelectorAll(".section-builder")].map(s => ({
+    text: s.querySelector(".text").value,
+    answers: s.querySelector(".answers").value.split(",").map(a => a.trim()),
+    start: +s.querySelector(".start").value,
+    end: +s.querySelector(".end").value
+  }));
 
-  return {videoUrl,sections:sectionsData};
+  return { videoUrl, sections };
 }
 
 function generate(){
-  const lesson=collect();
-  const link=`${location.origin}${location.pathname}?data=${encodeData(lesson)}`;
-  output.innerHTML=`<a href="${link}" target="_blank">Open Lesson</a><br>${link}`;
+  const lesson = collect();
+  const link = `${location.origin}${location.pathname}?data=${encodeData(lesson)}`;
+  document.getElementById("output").innerHTML =
+    `<a href="${link}" target="_blank">Open Lesson</a><br>${link}`;
 }
 
 function preview(){
   const lesson = collect();
-
-  // clear app completely before reload
-  document.getElementById("app").innerHTML = "";
-
-  setTimeout(()=>{
-    loadStudent(lesson, true);
-  }, 0);
+  app.innerHTML = "";
+  setTimeout(() => loadStudent(lesson, true), 0);
 }
 
 // ==========================
-// STUDENT
+// STUDENT VIEW
 // ==========================
-let ytPlayer=null,currentSection=0,stopTime=0;
-let answers=[],order=[],lessonData=null,checked=false;
+function loadStudent(lesson, isPreview){
 
-function loadStudent(lesson,isPreview){
-  lessonData=lesson;
-  answers=[];
-order=[];
-checked=false;
-currentSection=0;
+  lessonData = lesson;
+  answersMap = {};
+  order = [];
+  checked = false;
+  currentSection = 0;
 
-// reset YouTube player if exists
-if (ytPlayer && ytPlayer.destroy) {
-  ytPlayer.destroy();
-  ytPlayer = null;
-}
+  if(ytPlayer?.destroy){
+    ytPlayer.destroy();
+    ytPlayer = null;
+  }
 
-  const isYT=lesson.videoUrl.includes("youtube");
+  const isYT = lesson.videoUrl.includes("youtube");
 
-  app.innerHTML=`
-    <h2>🎧 Listening Practice ${isPreview?"(Preview)":""}</h2>
+  app.innerHTML = `
+    <h2>🎧 Listening Practice ${isPreview ? "(Preview)" : ""}</h2>
 
-    ${isPreview?`<button onclick="loadBuilder(lessonData)" class="secondary">⬅ Back</button>`:""}
+    ${isPreview ? `<button onclick="loadBuilder(lessonData)" class="secondary">⬅ Back</button>` : ""}
 
-    ${isYT?`<div id="player"></div>`:
-    `<video id="video" controls><source src="${lesson.videoUrl}"></video>`}
+    ${isYT ? `<div id="player"></div>` :
+      `<video id="video" controls><source src="${lesson.videoUrl}"></video>`}
 
     <div class="controls" id="buttons"></div>
     <div id="text"></div>
 
     <div class="controls">
       <button onclick="checkAnswers()">Check Answers</button>
-      <button class="secondary" onclick="repeatSection()">Repeat Section</button>
-      <button id="revealBtn" class="secondary" onclick="revealAnswers()" disabled>Reveal Answers</button>
+      <button class="secondary" onclick="repeatSection()">Repeat</button>
+      <button id="revealBtn" class="secondary" onclick="revealAnswers()" disabled>Reveal</button>
     </div>
 
     <p id="result"></p>
@@ -242,105 +238,111 @@ if (ytPlayer && ytPlayer.destroy) {
   renderText();
 }
 
+// ==========================
+// RENDER BUTTONS
+// ==========================
 function renderButtons(){
-  lessonData.sections.forEach((sec,i)=>{
-    const b=document.createElement("button");
-    b.textContent="Section "+(i+1);
-    b.onclick=()=>playSection(i);
-    buttons.appendChild(b);
+  const container = document.getElementById("buttons");
+
+  lessonData.sections.forEach((_, i) => {
+    const b = document.createElement("button");
+    b.textContent = "Section " + (i + 1);
+    b.onclick = () => playSection(i);
+    container.appendChild(b);
   });
 }
 
+// ==========================
+// TEXT + GAPS
+// ==========================
 function renderText(){
-  lessonData.sections.forEach((sec,si)=>{
-    let t=sec.text;
+  const container = document.getElementById("text");
+  container.innerHTML = "";
 
-    sec.answers.forEach((a,ai)=>{
-      const id=`q${si}_${ai}`;
-      let gapIndex = 0;
+  lessonData.sections.forEach((sec, si) => {
 
-t = t.replace(/_+/g, () => {
-  const id = `q${si}_${gapIndex}`;
+    let gapIndex = 0;
 
-  const html = `<span class="gap" data-id="${id}">_____</span>`;
+    let html = sec.text.replace(/___/g, () => {
+      const id = `q${si}_${gapIndex}`;
 
-  answers.push({ id, val: sec.answers[gapIndex] || "" });
-  order.push(id);
-
-  gapIndex++;
-  return html;
-});
-      answers.push({id,val:a});
+      answersMap[id] = sec.answers[gapIndex] || "";
       order.push(id);
+
+      gapIndex++;
+
+      return `<span class="gap" data-id="${id}">_____</span>`;
     });
 
-    const div=document.createElement("div");
-    div.className="section";
-    div.innerHTML=t+"<br><br>";
-    text.appendChild(div);
-  });activateGaps();
-  
+    const div = document.createElement("div");
+    div.className = "section";
+    div.innerHTML = html + "<br><br>";
+
+    container.appendChild(div);
+  });
+
+  activateGaps();
+}
+
 function activateGaps(){
-  document.querySelectorAll(".gap").forEach(g=>{
-
+  document.querySelectorAll(".gap").forEach(g => {
     g.onclick = function(){
-
       const id = this.dataset.id;
-
-      // prevent double conversion
-      if (document.getElementById(id)) return;
+      if(document.getElementById(id)) return;
 
       const input = document.createElement("input");
       input.id = id;
       input.className = "gap-input";
 
-      input.addEventListener("input", ()=> moveNext(id));
+      input.oninput = () => moveNext(id);
 
       this.replaceWith(input);
       input.focus();
     };
-
   });
 }
 
 function moveNext(id){
-  const i=order.indexOf(id);
-  const next=document.getElementById(order[i+1]);
+  const i = order.indexOf(id);
+  const next = document.getElementById(order[i + 1]);
   if(next) next.focus();
 }
 
+// ==========================
+// VIDEO CONTROL
+// ==========================
 function playSection(i){
-  currentSection=i;
+  currentSection = i;
 
-  document.querySelectorAll("#text .section").forEach((el,idx)=>{
-    el.classList.toggle("section-active", idx===i);
+  document.querySelectorAll(".section").forEach((el, idx) => {
+    el.classList.toggle("section-active", idx === i);
   });
 
-  const sec=lessonData.sections[i];
-  stopTime=sec.end;
+  const sec = lessonData.sections[i];
+  stopTime = sec.end;
 
   if(ytPlayer){
-    ytPlayer.seekTo(sec.start,true);
+    ytPlayer.seekTo(sec.start, true);
     ytPlayer.playVideo();
 
-    const t=setInterval(()=>{
-      if(ytPlayer.getCurrentTime()>=stopTime){
+    const t = setInterval(() => {
+      if(ytPlayer.getCurrentTime() >= stopTime){
         ytPlayer.pauseVideo();
         clearInterval(t);
       }
-    },200);
+    }, 200);
 
-  }else{
-    const v=document.getElementById("video");
-    v.currentTime=sec.start;
+  } else {
+    const v = document.getElementById("video");
+    v.currentTime = sec.start;
     v.play();
 
-    const t=setInterval(()=>{
-      if(v.currentTime>=stopTime){
+    const t = setInterval(() => {
+      if(v.currentTime >= stopTime){
         v.pause();
         clearInterval(t);
       }
-    },200);
+    }, 200);
   }
 }
 
@@ -348,21 +350,22 @@ function repeatSection(){
   playSection(currentSection);
 }
 
-  let ytLoaded = false;
-
+// ==========================
+// YOUTUBE
+// ==========================
 function loadYT(url){
 
   function createPlayer(){
     ytPlayer = new YT.Player("player", {
       height: "400",
       width: "100%",
-      videoId: (url.match(/(?:v=|youtu.be\/)([^&]+)/) || [])[1]
+      videoId: (url.match(/(?:v=|youtu\.be\/)([^&]+)/) || [])[1]
     });
   }
 
-  if (window.YT && window.YT.Player) {
+  if(window.YT?.Player){
     createPlayer();
-  } else if (!ytLoaded) {
+  } else if(!ytLoaded){
     ytLoaded = true;
 
     const tag = document.createElement("script");
@@ -373,43 +376,47 @@ function loadYT(url){
   }
 }
 
+// ==========================
+// ANSWERS
+// ==========================
 function checkAnswers(){
-  let score=0;
-  answers.forEach(a=>{
-    const i=document.getElementById(a.id);
-    if(!i) return;
+  let score = 0;
 
-    if(i.value.toLowerCase().trim()===a.val){
-      i.classList.add("correct"); score++;
-    }else{
-      i.classList.add("incorrect");
+  for(const id in answersMap){
+    const input = document.getElementById(id);
+    if(!input) continue;
+
+    const correct = answersMap[id].toLowerCase().trim();
+    const user = input.value.toLowerCase().trim();
+
+    if(user === correct){
+      input.classList.add("correct");
+      score++;
+    } else {
+      input.classList.add("incorrect");
     }
-  });
+  }
 
-  result.innerText=`Score: ${score} / ${answers.length}`;
-  checked=true;
-  revealBtn.disabled=false;
+  document.getElementById("result").innerText =
+    `Score: ${score} / ${Object.keys(answersMap).length}`;
+
+  checked = true;
+  document.getElementById("revealBtn").disabled = false;
 }
 
 function revealAnswers(){
   if(!checked) return;
 
-  answers.forEach(a=>{
-    let i=document.getElementById(a.id);
+  for(const id in answersMap){
+    let input = document.getElementById(id);
 
-    if(!i){
-      const g=document.querySelector(`[data-id="${a.id}"]`);
-      const n=document.createElement("input");
-      n.value=a.val;
-      n.classList.add("correct");
-      g.replaceWith(n);
-    }else{
-      i.value=a.val;
-      i.classList.add("correct");
+    if(input){
+      input.value = answersMap[id];
+      input.classList.add("correct");
     }
-  });
+  }
 
-  result.innerText+=" | Answers revealed";
+  document.getElementById("result").innerText += " | Answers revealed";
 }
 </script>
 

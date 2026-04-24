@@ -77,10 +77,11 @@ input.gap-input{
 // SAFE ENCODE
 // ==========================
 function encodeData(obj){
-  return btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+  return encodeURIComponent(JSON.stringify(obj));
 }
+
 function decodeData(str){
-  return JSON.parse(decodeURIComponent(escape(atob(str))));
+  return JSON.parse(decodeURIComponent(str));
 }
 
 // ==========================
@@ -260,6 +261,7 @@ function renderText(){
 
 t = t.replace(/_+/g, () => {
   const id = `q${si}_${gapIndex}`;
+
   const html = `<span class="gap" data-id="${id}">_____</span>`;
 
   answers.push({ id, val: sec.answers[gapIndex] || "" });
@@ -276,11 +278,17 @@ t = t.replace(/_+/g, () => {
     div.className="section";
     div.innerHTML=t+"<br><br>";
     text.appendChild(div);
-  });
+  });activateGaps();
+  
 function activateGaps(){
   document.querySelectorAll(".gap").forEach(g=>{
-    g.addEventListener("click", function(){
+
+    g.onclick = function(){
+
       const id = this.dataset.id;
+
+      // prevent double conversion
+      if (document.getElementById(id)) return;
 
       const input = document.createElement("input");
       input.id = id;
@@ -290,10 +298,9 @@ function activateGaps(){
 
       this.replaceWith(input);
       input.focus();
-    }, { once: true });
+    };
+
   });
-  activateGaps();
-}
 }
 
 function moveNext(id){

@@ -184,7 +184,14 @@ function generate(){
 }
 
 function preview(){
-  loadStudent(collect(), true);
+  const lesson = collect();
+
+  // clear app completely before reload
+  document.getElementById("app").innerHTML = "";
+
+  setTimeout(()=>{
+    loadStudent(lesson, true);
+  }, 0);
 }
 
 // ==========================
@@ -195,7 +202,16 @@ let answers=[],order=[],lessonData=null,checked=false;
 
 function loadStudent(lesson,isPreview){
   lessonData=lesson;
-  answers=[];order=[];checked=false;
+  answers=[];
+order=[];
+checked=false;
+currentSection=0;
+
+// reset YouTube player if exists
+if (ytPlayer && ytPlayer.destroy) {
+  ytPlayer.destroy();
+  ytPlayer = null;
+}
 
   const isYT=lesson.videoUrl.includes("youtube");
 
@@ -250,18 +266,23 @@ function renderText(){
     div.innerHTML=t+"<br><br>";
     text.appendChild(div);
   });
-
+function activateGaps(){
   document.querySelectorAll(".gap").forEach(g=>{
-    g.onclick=()=>{
-      const id=g.dataset.id;
-      const input=document.createElement("input");
-      input.id=id;
-      input.className="gap-input";
-      input.oninput=()=>moveNext(id);
-      g.replaceWith(input);
+    g.addEventListener("click", function(){
+      const id = this.dataset.id;
+
+      const input = document.createElement("input");
+      input.id = id;
+      input.className = "gap-input";
+
+      input.addEventListener("input", ()=> moveNext(id));
+
+      this.replaceWith(input);
       input.focus();
-    };
+    }, { once: true });
   });
+  activateGaps();
+}
 }
 
 function moveNext(id){
@@ -309,16 +330,29 @@ function repeatSection(){
   playSection(currentSection);
 }
 
-function loadYT(url){
-  const tag=document.createElement("script");
-  tag.src="https://www.youtube.com/iframe_api";
-  document.body.appendChild(tag);
+  let ytLoaded = false;
 
-  window.onYouTubeIframeAPIReady=()=>{
-    ytPlayer=new YT.Player("player",{
-      videoId:(url.match(/(?:v=|youtu.be\/)([^&]+)/)||[])[1]
+function loadYT(url){
+
+  function createPlayer(){
+    ytPlayer = new YT.Player("player", {
+      height: "400",
+      width: "100%",
+      videoId: (url.match(/(?:v=|youtu.be\/)([^&]+)/) || [])[1]
     });
-  };
+  }
+
+  if (window.YT && window.YT.Player) {
+    createPlayer();
+  } else if (!ytLoaded) {
+    ytLoaded = true;
+
+    const tag = document.createElement("script");
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.body.appendChild(tag);
+
+    window.onYouTubeIframeAPIReady = createPlayer;
+  }
 }
 
 function checkAnswers(){

@@ -256,7 +256,18 @@ function renderText(){
 
     sec.answers.forEach((a,ai)=>{
       const id=`q${si}_${ai}`;
-      t=t.replace("___", `<span class="gap" data-id="${id}">_____</span>`);
+      let gapIndex = 0;
+
+t = t.replace(/_+/g, () => {
+  const id = `q${si}_${gapIndex}`;
+  const html = `<span class="gap" data-id="${id}">_____</span>`;
+
+  answers.push({ id, val: sec.answers[gapIndex] || "" });
+  order.push(id);
+
+  gapIndex++;
+  return html;
+});
       answers.push({id,val:a});
       order.push(id);
     });

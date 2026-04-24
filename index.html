@@ -3,235 +3,198 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Listening Lesson</title>
+<title>Listening Lesson Builder</title>
 
 <style>
-body{
-  font-family:system-ui;
-  background:#f8fafc;
-  margin:0;
-}
-.container{
-  max-width:900px;
-  margin:40px auto;
-  background:white;
-  padding:24px;
-  border-radius:16px;
-}
+body{font-family:system-ui;background:#f8fafc;margin:0;}
+.container{max-width:900px;margin:40px auto;background:white;padding:24px;border-radius:16px;}
 
-video, iframe{
-  width:100%;
-  border-radius:10px;
-}
+video, iframe{width:100%;border-radius:10px;}
 
-.controls{
-  text-align:center;
-  margin:15px 0;
-}
+.controls{text-align:center;margin:15px 0;}
 
 button{
-  padding:8px 12px;
-  margin:4px;
-  border:none;
-  border-radius:6px;
-  background:#4f46e5;
-  color:white;
-  cursor:pointer;
+  padding:8px 12px;margin:4px;border:none;border-radius:6px;
+  background:#4f46e5;color:white;cursor:pointer;
 }
+.secondary{background:#e5e7eb;color:black;}
+button:disabled{opacity:0.5;cursor:not-allowed;}
 
-.secondary{
-  background:#e5e7eb;
-  color:black;
-}
+.section{background:#f1f5f9;padding:12px;margin:10px 0;border-radius:10px;}
 
-button:disabled{
-  opacity:0.5;
-  cursor:not-allowed;
-}
+.section-active{outline:2px solid #4f46e5;}
 
-.section-active{
-  outline:2px solid #4f46e5;
-  border-radius:8px;
-}
+textarea,input{width:100%;padding:6px;margin:4px 0;}
 
-.gap{
-  border-bottom:2px solid #333;
-  padding:2px 12px;
-  cursor:pointer;
-}
-
-input{
-  border:none;
-  border-bottom:2px solid #333;
-  width:100px;
-}
+.gap{border-bottom:2px solid #333;padding:2px 12px;cursor:pointer;}
+input.gap-input{border:none;border-bottom:2px solid #333;width:100px;}
 
 .correct{color:green;}
 .incorrect{color:red;}
 
-#text{
-  font-size:18px;
-  line-height:1.8;
-}
-
-#result{
-  margin-top:20px;
-  text-align:center;
-  font-weight:bold;
-}
+#text{font-size:18px;line-height:1.8;}
+#result{text-align:center;margin-top:20px;font-weight:bold;}
 </style>
 </head>
 
 <body>
-<div class="container">
-
-<h2>🎧 Listening Practice</h2>
-
-<div id="videoContainer"></div>
-
-<div class="controls" id="sectionButtons"></div>
-
-<div id="text"></div>
-
-<div class="controls">
-  <button onclick="checkAnswers()">Check Answers</button>
-  <button class="secondary" onclick="repeatSection()">Repeat Section</button>
-  <button id="revealBtn" class="secondary" onclick="revealAnswers()" disabled>Reveal Answers</button>
-</div>
-
-<p id="result"></p>
-
-</div>
+<div class="container" id="app"></div>
 
 <script>
 // ==========================
-// EDIT LESSON HERE
+// MODE DETECTION
 // ==========================
-const lesson = {
-  videoUrl: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
-  sections: [
-    {
-      text: "Lesson text ___ be displayed ___ like this.",
-      answers: ["should","exactly"],
-      start: 0,
-      end: 10
-    },
-    {
-      text: "Students ___ type directly into the text.",
-      answers: ["can"],
-      start: 10,
-      end: 20
-    }
-  ]
-};
+const params=new URLSearchParams(window.location.search);
+const data=params.get("data");
+
+if(data){
+  loadStudent(JSON.parse(atob(data)));
+}else{
+  loadBuilder();
+}
 
 // ==========================
-// GLOBALS
+// BUILDER MODE
+// ==========================
+function loadBuilder(){
+  app.innerHTML=`
+    <h2>🎧 Lesson Builder</h2>
+
+    <label>Video URL (MP4 or YouTube)</label>
+    <input id="videoUrl">
+
+    <h3>Sections</h3>
+    <div id="sections"></div>
+
+    <button onclick="addSection()">+ Add Section</button>
+
+    <br><br>
+    <button onclick="generate()">Generate Link</button>
+
+    <p id="output"></p>
+  `;
+  addSection();
+}
+
+function addSection(){
+  const div=document.createElement("div");
+  div.className="section";
+
+  div.innerHTML=`
+    <label>Text (use ___ for gaps)</label>
+    <textarea class="text"></textarea>
+
+    <label>Answers (comma separated)</label>
+    <input class="answers">
+
+    <label>Start (seconds)</label>
+    <input class="start" type="number">
+
+    <label>End (seconds)</label>
+    <input class="end" type="number">
+  `;
+
+  document.getElementById("sections").appendChild(div);
+}
+
+function generate(){
+  let videoUrl=document.getElementById("videoUrl").value.trim();
+  videoUrl=videoUrl.replace("http://","https://");
+
+  const sections=[];
+
+  document.querySelectorAll(".section").forEach(s=>{
+    sections.push({
+      text:s.querySelector(".text").value,
+      answers:s.querySelector(".answers").value.split(",").map(a=>a.trim()),
+      start:Number(s.querySelector(".start").value),
+      end:Number(s.querySelector(".end").value)
+    });
+  });
+
+  const lesson={videoUrl,sections};
+  const encoded=btoa(JSON.stringify(lesson));
+
+  const link=`${location.origin}${location.pathname}?data=${encoded}`;
+
+  document.getElementById("output").innerHTML=
+    `<a href="${link}" target="_blank">👉 Open Lesson</a><br>${link}`;
+}
+
+// ==========================
+// STUDENT MODE
 // ==========================
 let ytPlayer=null;
 let currentSection=0;
 let stopTime=0;
 let answers=[];
-let inputOrder=[];
-let answersChecked=false;
+let order=[];
+let checked=false;
 
-// ==========================
-// INIT
-// ==========================
-init();
+function loadStudent(lesson){
 
-function init(){
-  renderVideo();
-  renderButtons();
-  renderText();
-}
+  const isYT=lesson.videoUrl.includes("youtube");
 
-// ==========================
-// VIDEO
-// ==========================
-function renderVideo(){
-  const container=document.getElementById("videoContainer");
+  app.innerHTML=`
+    <h2>🎧 Listening Practice</h2>
 
-  if(lesson.videoUrl.includes("youtube")){
-    container.innerHTML = `<div id="player"></div>`;
-    loadYouTube();
-  } else {
-    container.innerHTML = `
-      <video id="video" controls>
-        <source src="${lesson.videoUrl}">
-      </video>
-    `;
-  }
-}
+    ${isYT ? `<div id="player"></div>` :
+    `<video id="video" controls><source src="${lesson.videoUrl}"></video>`}
 
-function loadYouTube(){
-  const tag=document.createElement("script");
-  tag.src="https://www.youtube.com/iframe_api";
-  document.body.appendChild(tag);
+    <div class="controls" id="buttons"></div>
+    <div id="text"></div>
 
-  window.onYouTubeIframeAPIReady=()=>{
-    ytPlayer=new YT.Player("player",{
-      height:"400",
-      width:"100%",
-      videoId:getYTid(lesson.videoUrl)
-    });
-  };
-}
+    <div class="controls">
+      <button onclick="checkAnswers()">Check Answers</button>
+      <button class="secondary" onclick="repeatSection()">Repeat Section</button>
+      <button id="revealBtn" class="secondary" onclick="revealAnswers()" disabled>Reveal Answers</button>
+    </div>
 
-function getYTid(url){
-  const m=url.match(/(?:v=|youtu.be\/)([^&]+)/);
-  return m?m[1]:null;
-}
+    <p id="result"></p>
+  `;
 
-// ==========================
-// BUTTONS
-// ==========================
-function renderButtons(){
-  const container=document.getElementById("sectionButtons");
+  if(isYT) loadYT(lesson.videoUrl);
 
-  lesson.sections.forEach((s,i)=>{
-    const btn=document.createElement("button");
-    btn.innerText="Section "+(i+1);
-    btn.onclick=()=>playSection(i);
-    container.appendChild(btn);
+  // buttons
+  lesson.sections.forEach((sec,i)=>{
+    const b=document.createElement("button");
+    b.innerText="Section "+(i+1);
+    b.onclick=()=>playSection(i,lesson);
+    buttons.appendChild(b);
   });
-}
 
-// ==========================
-// TEXT + GAPS
-// ==========================
-function renderText(){
-  const container=document.getElementById("text");
-
+  // text
   lesson.sections.forEach((sec,si)=>{
-    let text=sec.text;
+    let t=sec.text;
 
-    sec.answers.forEach((ans,ai)=>{
+    sec.answers.forEach((a,ai)=>{
       const id=`q${si}_${ai}`;
-      text=text.replace("___", `<span class="gap" data-id="${id}">_____</span>`);
-      answers.push({id, value:ans});
-      inputOrder.push(id);
+      t=t.replace("___", `<span class="gap" data-id="${id}">_____</span>`);
+      answers.push({id,val:a});
+      order.push(id);
     });
 
     const div=document.createElement("div");
-    div.className="section-block";
-    div.innerHTML=text + "<br><br>";
-    container.appendChild(div);
+    div.className="section";
+    div.innerHTML=t+"<br><br>";
+    text.appendChild(div);
   });
 
-  activateGapClicks();
+  activateGaps();
 }
 
-function activateGapClicks(){
+// ==========================
+// GAPS
+// ==========================
+function activateGaps(){
   document.querySelectorAll(".gap").forEach(g=>{
     g.onclick=()=>{
       const id=g.dataset.id;
       const input=document.createElement("input");
       input.id=id;
+      input.className="gap-input";
 
-      input.addEventListener("input", ()=>{
-        moveToNextInput(id);
-      });
+      input.oninput=()=>moveNext(id);
 
       g.replaceWith(input);
       input.focus();
@@ -239,24 +202,20 @@ function activateGapClicks(){
   });
 }
 
-// auto move
-function moveToNextInput(currentId){
-  const index=inputOrder.indexOf(currentId);
-  const nextId=inputOrder[index+1];
-  if(nextId){
-    const next=document.getElementById(nextId);
-    if(next) next.focus();
-  }
+function moveNext(id){
+  const i=order.indexOf(id);
+  const next=document.getElementById(order[i+1]);
+  if(next) next.focus();
 }
 
 // ==========================
-// PLAYBACK
+// VIDEO
 // ==========================
-function playSection(i){
+function playSection(i,lesson){
   currentSection=i;
 
-  document.querySelectorAll(".section-block").forEach((el,index)=>{
-    el.classList.toggle("section-active", index===i);
+  document.querySelectorAll(".section").forEach((el,idx)=>{
+    el.classList.toggle("section-active", idx===i);
   });
 
   const sec=lesson.sections[i];
@@ -272,8 +231,7 @@ function playSection(i){
         clearInterval(int);
       }
     },200);
-
-  } else {
+  }else{
     const v=document.getElementById("video");
     v.currentTime=sec.start;
     v.play();
@@ -288,7 +246,29 @@ function playSection(i){
 }
 
 function repeatSection(){
-  playSection(currentSection);
+  document.querySelectorAll(".controls button")[currentSection].click();
+}
+
+// ==========================
+// YOUTUBE
+// ==========================
+function loadYT(url){
+  const tag=document.createElement("script");
+  tag.src="https://www.youtube.com/iframe_api";
+  document.body.appendChild(tag);
+
+  window.onYouTubeIframeAPIReady=()=>{
+    ytPlayer=new YT.Player("player",{
+      height:"400",
+      width:"100%",
+      videoId:getYT(url)
+    });
+  };
+}
+
+function getYT(url){
+  const m=url.match(/(?:v=|youtu.be\/)([^&]+)/);
+  return m?m[1]:null;
 }
 
 // ==========================
@@ -301,24 +281,21 @@ function checkAnswers(){
     const input=document.getElementById(a.id);
     if(!input) return;
 
-    if(input.value.toLowerCase().trim()===a.value){
+    if(input.value.toLowerCase().trim()===a.val){
       input.classList.add("correct");
-      input.classList.remove("incorrect");
       score++;
-    } else {
+    }else{
       input.classList.add("incorrect");
     }
   });
 
-  document.getElementById("result").innerText =
-    `Score: ${score} / ${answers.length}`;
-
-  answersChecked=true;
-  document.getElementById("revealBtn").disabled=false;
+  result.innerText=`Score: ${score} / ${answers.length}`;
+  checked=true;
+  revealBtn.disabled=false;
 }
 
 function revealAnswers(){
-  if(!answersChecked) return;
+  if(!checked) return;
 
   answers.forEach(a=>{
     let input=document.getElementById(a.id);
@@ -326,17 +303,16 @@ function revealAnswers(){
     if(!input){
       const gap=document.querySelector(`[data-id="${a.id}"]`);
       const newInput=document.createElement("input");
-      newInput.id=a.id;
-      newInput.value=a.value;
+      newInput.value=a.val;
       newInput.classList.add("correct");
       gap.replaceWith(newInput);
-    } else {
-      input.value=a.value;
+    }else{
+      input.value=a.val;
       input.classList.add("correct");
     }
   });
 
-  document.getElementById("result").innerText += " | Answers revealed";
+  result.innerText+=" | Answers revealed";
 }
 </script>
 

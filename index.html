@@ -6,34 +6,32 @@
 <title>Listening Lesson Builder</title>
 
 <style>
-body{font-family:system-ui;background:#f8fafc;margin:0;}
-.container{max-width:900px;margin:40px auto;background:white;padding:24px;border-radius:16px;}
+body { font-family:system-ui; background:#f8fafc; margin:0; }
+.container { max-width:900px; margin:40px auto; background:white; padding:24px; border-radius:16px; }
 
-video, iframe{width:100%;border-radius:10px;}
+video, iframe { width:100%; border-radius:10px; }
 
-.controls{text-align:center;margin:15px 0;}
-
-button{
-  padding:8px 12px;margin:4px;border:none;border-radius:6px;
-  background:#4f46e5;color:white;cursor:pointer;
+button {
+  padding:8px 12px; margin:4px; border:none;
+  border-radius:6px; background:#4f46e5; color:white; cursor:pointer;
 }
-.secondary{background:#e5e7eb;color:black;}
-button:disabled{opacity:0.5;cursor:not-allowed;}
+.secondary { background:#e5e7eb; color:black; }
+button:disabled { opacity:0.5; cursor:not-allowed; }
 
-.section{background:#f1f5f9;padding:12px;margin:10px 0;border-radius:10px;}
+.section-builder { background:#f1f5f9; padding:12px; margin:10px 0; border-radius:10px; }
+.section-active { outline:2px solid #4f46e5; }
 
-.section-active{outline:2px solid #4f46e5;}
+textarea, input { width:100%; padding:6px; margin:4px 0; }
 
-textarea,input{width:100%;padding:6px;margin:4px 0;}
+.gap { border-bottom:2px solid #333; padding:2px 12px; cursor:pointer; }
+input.gap-input { border:none; border-bottom:2px solid #333; width:100px; }
 
-.gap{border-bottom:2px solid #333;padding:2px 12px;cursor:pointer;}
-input.gap-input{border:none;border-bottom:2px solid #333;width:100px;}
+.correct { color:green; }
+.incorrect { color:red; }
 
-.correct{color:green;}
-.incorrect{color:red;}
-
-#text{font-size:18px;line-height:1.8;}
-#result{text-align:center;margin-top:20px;font-weight:bold;}
+#text { font-size:18px; line-height:1.8; }
+#result { text-align:center; margin-top:20px; font-weight:bold; }
+.controls { text-align:center; margin:15px 0; }
 </style>
 </head>
 
@@ -42,104 +40,109 @@ input.gap-input{border:none;border-bottom:2px solid #333;width:100px;}
 
 <script>
 // ==========================
-// MODE DETECTION
+// MODE
 // ==========================
-const params=new URLSearchParams(window.location.search);
-const data=params.get("data");
+const params = new URLSearchParams(window.location.search);
+const data = params.get("data");
 
-if(data){
+if (data) {
   loadStudent(JSON.parse(atob(data)));
-}else{
+} else {
   loadBuilder();
 }
 
 // ==========================
-// BUILDER MODE
+// BUILDER
 // ==========================
 function loadBuilder(){
-  app.innerHTML=`
+  const app = document.getElementById("app");
+
+  app.innerHTML = `
     <h2>🎧 Lesson Builder</h2>
 
-    <label>Video URL (MP4 or YouTube)</label>
+    <label>Video URL</label>
     <input id="videoUrl">
 
     <h3>Sections</h3>
     <div id="sections"></div>
 
     <button onclick="addSection()">+ Add Section</button>
-
     <br><br>
     <button onclick="generate()">Generate Link</button>
 
     <p id="output"></p>
   `;
+
   addSection();
 }
 
 function addSection(){
-  const div=document.createElement("div");
-  div.className="section";
+  const container = document.getElementById("sections");
 
-  div.innerHTML=`
-    <label>Text (use ___ for gaps)</label>
+  const div = document.createElement("div");
+  div.className = "section-builder";
+
+  div.innerHTML = `
+    <label>Text (use ___)</label>
     <textarea class="text"></textarea>
 
     <label>Answers (comma separated)</label>
     <input class="answers">
 
-    <label>Start (seconds)</label>
+    <label>Start</label>
     <input class="start" type="number">
 
-    <label>End (seconds)</label>
+    <label>End</label>
     <input class="end" type="number">
   `;
 
-  document.getElementById("sections").appendChild(div);
+  container.appendChild(div);
 }
 
 function generate(){
-  let videoUrl=document.getElementById("videoUrl").value.trim();
-  videoUrl=videoUrl.replace("http://","https://");
+  let videoUrl = document.getElementById("videoUrl").value.trim();
+  videoUrl = videoUrl.replace("http://","https://");
 
-  const sections=[];
+  const sections = [];
 
-  document.querySelectorAll(".section").forEach(s=>{
+  document.querySelectorAll(".section-builder").forEach(s=>{
     sections.push({
-      text:s.querySelector(".text").value,
-      answers:s.querySelector(".answers").value.split(",").map(a=>a.trim()),
-      start:Number(s.querySelector(".start").value),
-      end:Number(s.querySelector(".end").value)
+      text: s.querySelector(".text").value,
+      answers: s.querySelector(".answers").value.split(",").map(a=>a.trim()),
+      start: Number(s.querySelector(".start").value),
+      end: Number(s.querySelector(".end").value)
     });
   });
 
-  const lesson={videoUrl,sections};
-  const encoded=btoa(JSON.stringify(lesson));
+  const lesson = { videoUrl, sections };
+  const link = `${location.origin}${location.pathname}?data=${btoa(JSON.stringify(lesson))}`;
 
-  const link=`${location.origin}${location.pathname}?data=${encoded}`;
-
-  document.getElementById("output").innerHTML=
-    `<a href="${link}" target="_blank">👉 Open Lesson</a><br>${link}`;
+  document.getElementById("output").innerHTML =
+    `<a href="${link}" target="_blank">Open Lesson</a><br>${link}`;
 }
 
 // ==========================
 // STUDENT MODE
 // ==========================
-let ytPlayer=null;
-let currentSection=0;
-let stopTime=0;
-let answers=[];
-let order=[];
-let checked=false;
+let ytPlayer = null;
+let currentSection = 0;
+let stopTime = 0;
+let answers = [];
+let order = [];
+let lessonData = null;
+let checked = false;
 
 function loadStudent(lesson){
+  lessonData = lesson;
 
-  const isYT=lesson.videoUrl.includes("youtube");
+  const app = document.getElementById("app");
+  const isYT = lesson.videoUrl.includes("youtube");
 
-  app.innerHTML=`
+  app.innerHTML = `
     <h2>🎧 Listening Practice</h2>
 
     ${isYT ? `<div id="player"></div>` :
-    `<video id="video" controls><source src="${lesson.videoUrl}"></video>`}
+      `<video id="video" controls><source src="${lesson.videoUrl}"></video>`}
 
     <div class="controls" id="buttons"></div>
     <div id="text"></div>
@@ -153,31 +156,43 @@ function loadStudent(lesson){
     <p id="result"></p>
   `;
 
-  if(isYT) loadYT(lesson.videoUrl);
+  if (isYT) loadYT(lesson.videoUrl);
 
-  // buttons
-  lesson.sections.forEach((sec,i)=>{
-    const b=document.createElement("button");
-    b.innerText="Section "+(i+1);
-    b.onclick=()=>playSection(i,lesson);
-    buttons.appendChild(b);
+  renderButtons();
+  renderText();
+}
+
+// ==========================
+// RENDER
+// ==========================
+function renderButtons(){
+  const container = document.getElementById("buttons");
+
+  lessonData.sections.forEach((sec,i)=>{
+    const btn = document.createElement("button");
+    btn.textContent = "Section " + (i+1);
+    btn.onclick = () => playSection(i);
+    container.appendChild(btn);
   });
+}
 
-  // text
-  lesson.sections.forEach((sec,si)=>{
-    let t=sec.text;
+function renderText(){
+  const container = document.getElementById("text");
 
-    sec.answers.forEach((a,ai)=>{
-      const id=`q${si}_${ai}`;
-      t=t.replace("___", `<span class="gap" data-id="${id}">_____</span>`);
-      answers.push({id,val:a});
+  lessonData.sections.forEach((sec,si)=>{
+    let text = sec.text;
+
+    sec.answers.forEach((ans,ai)=>{
+      const id = `q${si}_${ai}`;
+      text = text.replace("___", `<span class="gap" data-id="${id}">_____</span>`);
+      answers.push({id,val:ans});
       order.push(id);
     });
 
-    const div=document.createElement("div");
-    div.className="section";
-    div.innerHTML=t+"<br><br>";
-    text.appendChild(div);
+    const div = document.createElement("div");
+    div.className = "section";
+    div.innerHTML = text + "<br><br>";
+    container.appendChild(div);
   });
 
   activateGaps();
@@ -188,13 +203,13 @@ function loadStudent(lesson){
 // ==========================
 function activateGaps(){
   document.querySelectorAll(".gap").forEach(g=>{
-    g.onclick=()=>{
-      const id=g.dataset.id;
-      const input=document.createElement("input");
-      input.id=id;
-      input.className="gap-input";
+    g.onclick = ()=>{
+      const id = g.dataset.id;
+      const input = document.createElement("input");
+      input.id = id;
+      input.className = "gap-input";
 
-      input.oninput=()=>moveNext(id);
+      input.oninput = ()=> moveNext(id);
 
       g.replaceWith(input);
       input.focus();
@@ -203,41 +218,42 @@ function activateGaps(){
 }
 
 function moveNext(id){
-  const i=order.indexOf(id);
-  const next=document.getElementById(order[i+1]);
+  const i = order.indexOf(id);
+  const next = document.getElementById(order[i+1]);
   if(next) next.focus();
 }
 
 // ==========================
-// VIDEO
+// VIDEO CONTROL
 // ==========================
-function playSection(i,lesson){
-  currentSection=i;
+function playSection(i){
+  currentSection = i;
 
-  document.querySelectorAll(".section").forEach((el,idx)=>{
+  document.querySelectorAll("#text .section").forEach((el,idx)=>{
     el.classList.toggle("section-active", idx===i);
   });
 
-  const sec=lesson.sections[i];
-  stopTime=sec.end;
+  const sec = lessonData.sections[i];
+  stopTime = sec.end;
 
   if(ytPlayer){
     ytPlayer.seekTo(sec.start,true);
     ytPlayer.playVideo();
 
-    const int=setInterval(()=>{
-      if(ytPlayer.getCurrentTime()>=stopTime){
+    const int = setInterval(()=>{
+      if(ytPlayer.getCurrentTime() >= stopTime){
         ytPlayer.pauseVideo();
         clearInterval(int);
       }
     },200);
-  }else{
-    const v=document.getElementById("video");
-    v.currentTime=sec.start;
+
+  } else {
+    const v = document.getElementById("video");
+    v.currentTime = sec.start;
     v.play();
 
-    const int=setInterval(()=>{
-      if(v.currentTime>=stopTime){
+    const int = setInterval(()=>{
+      if(v.currentTime >= stopTime){
         v.pause();
         clearInterval(int);
       }
@@ -246,73 +262,75 @@ function playSection(i,lesson){
 }
 
 function repeatSection(){
-  document.querySelectorAll(".controls button")[currentSection].click();
+  playSection(currentSection);
 }
 
 // ==========================
 // YOUTUBE
 // ==========================
 function loadYT(url){
-  const tag=document.createElement("script");
-  tag.src="https://www.youtube.com/iframe_api";
+  const tag = document.createElement("script");
+  tag.src = "https://www.youtube.com/iframe_api";
   document.body.appendChild(tag);
 
-  window.onYouTubeIframeAPIReady=()=>{
-    ytPlayer=new YT.Player("player",{
+  window.onYouTubeIframeAPIReady = ()=>{
+    ytPlayer = new YT.Player("player",{
       height:"400",
       width:"100%",
-      videoId:getYT(url)
+      videoId: getYTid(url)
     });
   };
 }
 
-function getYT(url){
-  const m=url.match(/(?:v=|youtu.be\/)([^&]+)/);
-  return m?m[1]:null;
+function getYTid(url){
+  const m = url.match(/(?:v=|youtu.be\/)([^&]+)/);
+  return m ? m[1] : null;
 }
 
 // ==========================
 // ANSWERS
 // ==========================
 function checkAnswers(){
-  let score=0;
+  let score = 0;
 
   answers.forEach(a=>{
-    const input=document.getElementById(a.id);
+    const input = document.getElementById(a.id);
     if(!input) return;
 
-    if(input.value.toLowerCase().trim()===a.val){
+    if(input.value.toLowerCase().trim() === a.val){
       input.classList.add("correct");
       score++;
-    }else{
+    } else {
       input.classList.add("incorrect");
     }
   });
 
-  result.innerText=`Score: ${score} / ${answers.length}`;
-  checked=true;
-  revealBtn.disabled=false;
+  document.getElementById("result").innerText =
+    `Score: ${score} / ${answers.length}`;
+
+  checked = true;
+  document.getElementById("revealBtn").disabled = false;
 }
 
 function revealAnswers(){
   if(!checked) return;
 
   answers.forEach(a=>{
-    let input=document.getElementById(a.id);
+    let input = document.getElementById(a.id);
 
     if(!input){
-      const gap=document.querySelector(`[data-id="${a.id}"]`);
-      const newInput=document.createElement("input");
-      newInput.value=a.val;
+      const gap = document.querySelector(`[data-id="${a.id}"]`);
+      const newInput = document.createElement("input");
+      newInput.value = a.val;
       newInput.classList.add("correct");
       gap.replaceWith(newInput);
-    }else{
-      input.value=a.val;
+    } else {
+      input.value = a.val;
       input.classList.add("correct");
     }
   });
 
-  result.innerText+=" | Answers revealed";
+  document.getElementById("result").innerText += " | Answers revealed";
 }
 </script>
 
